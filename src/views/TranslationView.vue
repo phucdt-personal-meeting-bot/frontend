@@ -1,13 +1,21 @@
 <script setup>
 import { ref } from 'vue'
 import { useToast } from 'vue-toastification'
-import { read, utils } from 'xlsx'
+import { read } from 'xlsx'
+import api from '@/api/axios'
 
 const toast = useToast()
 const MAX_SIZE = 10 * 1024 * 1024
 
+const languages = [
+  { value: 'vi', label: 'Vietnamese' },
+  { value: 'en', label: 'English' },
+  { value: 'ja', label: 'Japanese' },
+]
+
 const file = ref(null)
 const sheetNames = ref([])
+const language = ref('vi')
 const filePrompt = ref('')
 const sheetPrompts = ref({})
 const fileInputRef = ref(null)
@@ -35,6 +43,7 @@ function handleFile(event) {
       return
     }
     file.value = selected
+    language.value = 'vi'
     filePrompt.value = ''
     sheetPrompts.value = {}
     sheetNames.value = workbook.SheetNames
@@ -46,11 +55,47 @@ function handleFile(event) {
 }
 
 function removeFile() {
-  file.value = null
   sheetNames.value = []
+  language.value = 'vi'
   filePrompt.value = ''
   sheetPrompts.value = {}
-  fileInputRef.value.value = ''
+  if (fileInputRef.value) fileInputRef.value.value = ''
+  file.value = null
+}
+
+const submitting = ref(false)
+
+async function submit() {
+  const sheetPromptsArray = sheetNames.value.map((name) => ({
+    sheet_name: name,
+    prompt: sheetPrompts.value[name] || '',
+  }))
+
+  const payload = {
+    file: file.value,
+    language: language.value,
+    prompt: filePrompt.value || ' ',
+    sheet_prompts: JSON.stringify(sheetPromptsArray),
+  }
+
+  const formData = new FormData()
+  for (const [key, value] of Object.entries(payload)) {
+    formData.append(key, value)
+  }
+
+  submitting.value = true
+  try {
+    await api.post('/translation/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    toast.success('File uploaded successfully!')
+    removeFile()
+  } catch (err) {
+    const detail = err.response?.data?.detail
+    toast.error(typeof detail === 'string' ? detail : 'Upload failed. Please try again.')
+  } finally {
+    submitting.value = false
+  }
 }
 </script>
 
@@ -86,11 +131,29 @@ function removeFile() {
         <font-awesome-icon icon="file-excel" class="text-xl text-green-600" />
         <div class="flex-1 min-w-0">
           <p class="text-sm font-medium text-gray-900 truncate">{{ file.name }}</p>
-          <p class="text-xs text-gray-400">{{ sheetNames.length }} sheet{{ sheetNames.length !== 1 ? 's' : '' }}</p>
+          <p class="text-xs text-gray-400">
+            {{ sheetNames.length }} sheet{{ sheetNames.length !== 1 ? 's' : '' }}
+          </p>
         </div>
-        <button @click="removeFile" class="text-gray-400 hover:text-red-500 transition-colors cursor-pointer">
+        <button
+          @click="removeFile"
+          class="text-gray-400 hover:text-red-500 transition-colors cursor-pointer"
+        >
           <font-awesome-icon icon="xmark-circle" class="text-lg" />
         </button>
+      </div>
+
+      <!-- Language -->
+      <div class="flex flex-col gap-1.5">
+        <label class="text-sm font-semibold text-gray-700">Prompting language</label>
+        <select
+          v-model="language"
+          class="px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 bg-gray-50 outline-none focus:border-indigo-500 focus:bg-white transition-colors"
+        >
+          <option v-for="lang in languages" :key="lang.value" :value="lang.value">
+            {{ lang.label }}
+          </option>
+        </select>
       </div>
 
       <!-- File-level prompt -->
@@ -120,9 +183,11 @@ function removeFile() {
 
       <!-- Submit -->
       <button
-        class="self-start px-6 py-2.5 bg-indigo-500 hover:bg-indigo-600 text-white text-sm font-semibold rounded-lg cursor-pointer transition-colors"
+        @click="submit"
+        :disabled="submitting"
+        class="self-start px-6 py-2.5 bg-indigo-500 hover:bg-indigo-600 disabled:bg-indigo-300 text-white text-sm font-semibold rounded-lg cursor-pointer disabled:cursor-not-allowed transition-colors"
       >
-        Submit
+        {{ submitting ? 'Uploading...' : 'Submit' }}
       </button>
     </div>
   </div>
