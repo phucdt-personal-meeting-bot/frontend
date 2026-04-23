@@ -164,6 +164,26 @@ function formatDate(dateStr) {
   return new Date(dateStr).toLocaleString()
 }
 
+const downloading = ref({})
+
+async function downloadFile(jobId, type) {
+  const key = `${jobId}-${type}`
+  downloading.value[key] = true
+  try {
+    const { data } = await api.get(`/translation/jobs/${jobId}/download`)
+    const url = type === 'original' ? data.original_url : data.result_url
+    if (!url) {
+      toast.error('Download URL is not available')
+      return
+    }
+    window.open(url, '_blank')
+  } catch {
+    toast.error('Failed to get download link')
+  } finally {
+    downloading.value[key] = false
+  }
+}
+
 let pollInterval = null
 
 onMounted(() => {
@@ -281,23 +301,52 @@ onUnmounted(() => {
       </div>
 
       <div v-else class="flex flex-col gap-2">
-        <button
+        <div
           v-for="job in jobs"
           :key="job.id"
-          @click="openJobDetail(job.id)"
-          class="flex items-center gap-3 bg-white border border-gray-200 rounded-lg px-4 py-3 hover:border-indigo-300 transition-colors cursor-pointer text-left w-full"
+          class="flex items-center gap-3 bg-white border border-gray-200 rounded-lg px-4 py-3 hover:border-indigo-300 transition-colors"
         >
           <font-awesome-icon
             :icon="statusIcon(job.status)"
             :class="statusColor(job.status)"
             :spin="job.status === 'processing'"
           />
-          <div class="flex-1 min-w-0">
+          <button
+            @click="openJobDetail(job.id)"
+            class="flex-1 min-w-0 text-left cursor-pointer"
+          >
             <p class="text-sm font-medium text-gray-900 truncate">{{ job.file_key.split('/').pop() }}</p>
             <p class="text-xs text-gray-400">{{ formatDate(job.created_at) }}</p>
+          </button>
+          <div class="flex items-center gap-1.5 shrink-0">
+            <button
+              @click="downloadFile(job.id, 'original')"
+              :disabled="downloading[`${job.id}-original`]"
+              class="p-1.5 text-gray-400 hover:text-indigo-500 disabled:text-gray-300 disabled:cursor-not-allowed cursor-pointer transition-colors"
+              title="Download original file"
+            >
+              <font-awesome-icon
+                :icon="downloading[`${job.id}-original`] ? 'spinner' : 'download'"
+                :spin="downloading[`${job.id}-original`]"
+                class="text-sm"
+              />
+            </button>
+            <button
+              v-if="job.status === 'completed'"
+              @click="downloadFile(job.id, 'result')"
+              :disabled="downloading[`${job.id}-result`]"
+              class="p-1.5 text-green-500 hover:text-green-600 disabled:text-green-300 disabled:cursor-not-allowed cursor-pointer transition-colors"
+              title="Download translated file"
+            >
+              <font-awesome-icon
+                :icon="downloading[`${job.id}-result`] ? 'spinner' : 'download'"
+                :spin="downloading[`${job.id}-result`]"
+                class="text-sm"
+              />
+            </button>
           </div>
           <span
-            class="text-xs font-medium px-2 py-0.5 rounded-full capitalize"
+            class="text-xs font-medium px-2 py-0.5 rounded-full capitalize shrink-0"
             :class="{
               'bg-green-50 text-green-600': job.status === 'completed',
               'bg-red-50 text-red-600': job.status === 'failed',
@@ -307,7 +356,7 @@ onUnmounted(() => {
           >
             {{ job.status }}
           </span>
-        </button>
+        </div>
 
         <!-- Pagination -->
         <div v-if="jobsPages > 1" class="flex items-center justify-center gap-3 mt-3">

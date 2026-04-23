@@ -6,6 +6,7 @@ import { library } from '@fortawesome/fontawesome-svg-core'
 import {
   faHouse, faLanguage, faBars, faXmark, faUpload, faFileExcel, faXmarkCircle,
   faSpinner, faCircleCheck, faCircleXmark, faClock, faChevronLeft, faChevronRight,
+  faDownload,
 } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome'
 
@@ -16,6 +17,7 @@ import './assets/main.css'
 library.add(
   faHouse, faLanguage, faBars, faXmark, faUpload, faFileExcel, faXmarkCircle,
   faSpinner, faCircleCheck, faCircleXmark, faClock, faChevronLeft, faChevronRight,
+  faDownload,
 )
 
 const app = createApp(App)
