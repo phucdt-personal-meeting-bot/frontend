@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useToast } from 'vue-toastification'
 import { read } from 'xlsx'
 import api from '@/api/axios'
@@ -90,6 +90,7 @@ async function submit() {
     })
     toast.success('File uploaded successfully!')
     removeFile()
+    fetchJobs()
   } catch (err) {
     const detail = err.response?.data?.detail
     toast.error(typeof detail === 'string' ? detail : 'Upload failed. Please try again.')
@@ -97,6 +98,82 @@ async function submit() {
     submitting.value = false
   }
 }
+
+const languageLabels = { vi: 'Vietnamese', en: 'English', ja: 'Japanese' }
+
+const jobs = ref([])
+const jobsPage = ref(1)
+const jobsTotal = ref(0)
+const jobsPages = ref(1)
+const jobsLoading = ref(false)
+
+async function fetchJobs(page = 1) {
+  jobsLoading.value = true
+  try {
+    const { data } = await api.get('/translation/jobs', { params: { page, page_size: 10 } })
+    jobs.value = data.items
+    jobsPage.value = data.page
+    jobsTotal.value = data.total
+    jobsPages.value = data.pages
+  } catch {
+    // silently fail — jobs list is not critical
+  } finally {
+    jobsLoading.value = false
+  }
+}
+
+const selectedJob = ref(null)
+const jobDetailLoading = ref(false)
+
+async function openJobDetail(jobId) {
+  jobDetailLoading.value = true
+  selectedJob.value = null
+  try {
+    const { data } = await api.get(`/translation/jobs/${jobId}`)
+    selectedJob.value = data
+  } catch {
+    toast.error('Failed to load job details')
+  } finally {
+    jobDetailLoading.value = false
+  }
+}
+
+function closeModal() {
+  selectedJob.value = null
+}
+
+function statusIcon(status) {
+  switch (status) {
+    case 'completed': return 'circle-check'
+    case 'failed': return 'circle-xmark'
+    case 'processing': return 'spinner'
+    default: return 'clock'
+  }
+}
+
+function statusColor(status) {
+  switch (status) {
+    case 'completed': return 'text-green-500'
+    case 'failed': return 'text-red-500'
+    case 'processing': return 'text-yellow-500'
+    default: return 'text-gray-400'
+  }
+}
+
+function formatDate(dateStr) {
+  return new Date(dateStr).toLocaleString()
+}
+
+let pollInterval = null
+
+onMounted(() => {
+  fetchJobs()
+  pollInterval = setInterval(() => fetchJobs(jobsPage.value), 5000)
+})
+
+onUnmounted(() => {
+  clearInterval(pollInterval)
+})
 </script>
 
 <template>
@@ -189,6 +266,146 @@ async function submit() {
       >
         {{ submitting ? 'Uploading...' : 'Submit' }}
       </button>
+    </div>
+
+    <!-- Jobs list -->
+    <div class="mt-10">
+      <h2 class="text-lg font-bold text-gray-900 mb-4">Translation Jobs</h2>
+
+      <div v-if="jobsLoading && !jobs.length" class="text-sm text-gray-400 py-6 text-center">
+        Loading...
+      </div>
+
+      <div v-else-if="!jobs.length" class="text-sm text-gray-400 py-6 text-center">
+        No jobs yet
+      </div>
+
+      <div v-else class="flex flex-col gap-2">
+        <button
+          v-for="job in jobs"
+          :key="job.id"
+          @click="openJobDetail(job.id)"
+          class="flex items-center gap-3 bg-white border border-gray-200 rounded-lg px-4 py-3 hover:border-indigo-300 transition-colors cursor-pointer text-left w-full"
+        >
+          <font-awesome-icon
+            :icon="statusIcon(job.status)"
+            :class="statusColor(job.status)"
+            :spin="job.status === 'processing'"
+          />
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-medium text-gray-900 truncate">{{ job.file_key.split('/').pop() }}</p>
+            <p class="text-xs text-gray-400">{{ formatDate(job.created_at) }}</p>
+          </div>
+          <span
+            class="text-xs font-medium px-2 py-0.5 rounded-full capitalize"
+            :class="{
+              'bg-green-50 text-green-600': job.status === 'completed',
+              'bg-red-50 text-red-600': job.status === 'failed',
+              'bg-yellow-50 text-yellow-600': job.status === 'processing',
+              'bg-gray-100 text-gray-500': job.status === 'pending',
+            }"
+          >
+            {{ job.status }}
+          </span>
+        </button>
+
+        <!-- Pagination -->
+        <div v-if="jobsPages > 1" class="flex items-center justify-center gap-3 mt-3">
+          <button
+            :disabled="jobsPage <= 1"
+            @click="fetchJobs(jobsPage - 1)"
+            class="p-2 text-gray-500 hover:text-gray-900 disabled:text-gray-300 disabled:cursor-not-allowed cursor-pointer"
+          >
+            <font-awesome-icon icon="chevron-left" />
+          </button>
+          <span class="text-sm text-gray-500">{{ jobsPage }} / {{ jobsPages }}</span>
+          <button
+            :disabled="jobsPage >= jobsPages"
+            @click="fetchJobs(jobsPage + 1)"
+            class="p-2 text-gray-500 hover:text-gray-900 disabled:text-gray-300 disabled:cursor-not-allowed cursor-pointer"
+          >
+            <font-awesome-icon icon="chevron-right" />
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Job detail modal -->
+    <div
+      v-if="selectedJob || jobDetailLoading"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/30"
+      @click.self="closeModal"
+    >
+      <div class="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[80vh] overflow-auto">
+        <div v-if="jobDetailLoading" class="p-10 text-center text-gray-400">
+          <font-awesome-icon icon="spinner" spin class="text-2xl" />
+        </div>
+        <div v-else-if="selectedJob" class="p-6">
+          <div class="flex items-center justify-between mb-5">
+            <h3 class="text-lg font-bold text-gray-900">Job #{{ selectedJob.id }}</h3>
+            <button @click="closeModal" class="text-gray-400 hover:text-gray-600 cursor-pointer">
+              <font-awesome-icon icon="xmark" class="text-lg" />
+            </button>
+          </div>
+
+          <div class="flex flex-col gap-4 text-sm">
+            <div class="flex items-center gap-2">
+              <span class="font-semibold text-gray-700 w-24 shrink-0">Status</span>
+              <span
+                class="font-medium px-2 py-0.5 rounded-full capitalize text-xs"
+                :class="{
+                  'bg-green-50 text-green-600': selectedJob.status === 'completed',
+                  'bg-red-50 text-red-600': selectedJob.status === 'failed',
+                  'bg-yellow-50 text-yellow-600': selectedJob.status === 'processing',
+                  'bg-gray-100 text-gray-500': selectedJob.status === 'pending',
+                }"
+              >
+                {{ selectedJob.status }}
+              </span>
+            </div>
+
+            <div class="flex gap-2">
+              <span class="font-semibold text-gray-700 w-24 shrink-0">Language</span>
+              <span class="text-gray-600">{{ languageLabels[selectedJob.language] || selectedJob.language }}</span>
+            </div>
+
+            <div class="flex gap-2">
+              <span class="font-semibold text-gray-700 w-24 shrink-0">File</span>
+              <span class="text-gray-600 break-all">{{ selectedJob.file_key.split('/').pop() }}</span>
+            </div>
+
+            <div class="flex gap-2">
+              <span class="font-semibold text-gray-700 w-24 shrink-0">Prompt</span>
+              <span class="text-gray-600 whitespace-pre-wrap">{{ selectedJob.prompt }}</span>
+            </div>
+
+            <div v-if="selectedJob.sheet_prompts?.length">
+              <span class="font-semibold text-gray-700">Sheet prompts</span>
+              <div class="mt-2 flex flex-col gap-2">
+                <div
+                  v-for="sp in selectedJob.sheet_prompts"
+                  :key="sp.sheet_name"
+                  class="bg-gray-50 rounded-lg px-3 py-2"
+                >
+                  <p class="text-xs font-medium text-gray-500">{{ sp.sheet_name }}</p>
+                  <p class="text-gray-600 whitespace-pre-wrap">{{ sp.prompt || '—' }}</p>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="selectedJob.error" class="flex gap-2">
+              <span class="font-semibold text-red-600 w-24 shrink-0">Error</span>
+              <span class="text-red-500">{{ selectedJob.error }}</span>
+            </div>
+
+            <div class="flex gap-2 text-xs text-gray-400 pt-2 border-t border-gray-100">
+              <span>Created: {{ formatDate(selectedJob.created_at) }}</span>
+              <span>&middot;</span>
+              <span>Updated: {{ formatDate(selectedJob.updated_at) }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>

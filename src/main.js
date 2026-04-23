@@ -3,14 +3,20 @@ import { createPinia } from 'pinia'
 import Toast from 'vue-toastification'
 import 'vue-toastification/dist/index.css'
 import { library } from '@fortawesome/fontawesome-svg-core'
-import { faHouse, faLanguage, faBars, faXmark, faUpload, faFileExcel, faXmarkCircle } from '@fortawesome/free-solid-svg-icons'
+import {
+  faHouse, faLanguage, faBars, faXmark, faUpload, faFileExcel, faXmarkCircle,
+  faSpinner, faCircleCheck, faCircleXmark, faClock, faChevronLeft, faChevronRight,
+} from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome'
 
 import App from './App.vue'
 import router from './router'
 import './assets/main.css'
 
-library.add(faHouse, faLanguage, faBars, faXmark, faUpload, faFileExcel, faXmarkCircle)
+library.add(
+  faHouse, faLanguage, faBars, faXmark, faUpload, faFileExcel, faXmarkCircle,
+  faSpinner, faCircleCheck, faCircleXmark, faClock, faChevronLeft, faChevronRight,
+)
 
 const app = createApp(App)
 app.component('font-awesome-icon', FontAwesomeIcon)
